@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KMZ to NAD83 CSV Converter</title>
+  <title>KMZ to NAD83 Exporter</title>
 
   <!-- JSZip to unpack .kmz files -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -13,7 +13,7 @@
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      max-width: 650px;
+      max-width: 600px;
       margin: 40px auto;
       padding: 0 20px;
       line-height: 1.5;
@@ -104,10 +104,8 @@
     proj4.defs("EPSG:3417", "+proj=lcc +lat_1=41.78333333333333 +lat_2=40.61666666666667 +lat_0=40 +lon_0=-93.5 +x_0=500000.0000000001 +y_0=0 +datum=NAD83 +units=us-ft +no_defs");
     proj4.defs("EPSG:3418", "+proj=lcc +lat_1=43.26666666666667 +lat_2=42.06666666666667 +lat_0=41.5 +lon_0=-93.5 +x_0=500000.0000000001 +y_0=1000000 +datum=NAD83 +units=us-ft +no_defs");
 
-    // Meters to Feet helper
     const M_TO_FT = 3.28084;
 
-    // Fetch USGS 3DEP elevations if selected
     async function fetchUSGSElevationsBatch(rawPoints, updateStatus) {
       const results = new Array(rawPoints.length).fill(0);
       const chunkSize = 10;
@@ -179,7 +177,6 @@
             if (parts.length >= 2) {
               const lon = parseFloat(parts[0]);
               const lat = parseFloat(parts[1]);
-              // Embedded KML elevation (in meters standard)
               let altFt = parts.length >= 3 ? parseFloat(parts[2]) * M_TO_FT : 0;
 
               if (!isNaN(lon) && !isNaN(lat)) {
@@ -200,12 +197,12 @@
             status.innerText = `Fetching USGS elevations (${current}/${total})...`;
           });
         } else {
+          status.innerText = "Extracting embedded KML elevations...";
           elevationsFeet = rawPoints.map(p => p.altFt);
         }
 
         status.innerText = "Formatting output...";
 
-        // Format: point number, lat, lon, elevation
         let outputLines = [];
 
         rawPoints.forEach((pt, idx) => {
@@ -229,252 +226,6 @@
         document.body.removeChild(a);
 
         status.innerText = `Done! Exported ${rawPoints.length} points to nad83_points.csv`;
-
-      } catch (err) {
-        console.error(err);
-        status.innerText = `Error: ${err.message}`;
-      } finally {
-        processBtn.disabled = false;
-      }
-    }
-  </script>
-</body>
-</html><!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KMZ Coordinate & Elevation Converter</title>
-
-  <!-- JSZip to unpack .kmz files -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <!-- proj4js to handle WGS84 to NAD83 / State Plane coordinate transformations -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      max-width: 700px;
-      margin: 40px auto;
-      padding: 0 20px;
-      line-height: 1.5;
-      background-color: #f9f9f9;
-      color: #333;
-    }
-    .card {
-      background: #ffffff;
-      border: 1px solid #e1e4e8;
-      border-radius: 8px;
-      padding: 24px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    .form-group {
-      margin-bottom: 16px;
-    }
-    label {
-      display: block;
-      font-weight: 600;
-      margin-bottom: 6px;
-    }
-    input[type="file"], select, button {
-      font-size: 14px;
-      padding: 8px 12px;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-    }
-    select {
-      width: 100%;
-      max-width: 400px;
-    }
-    button {
-      background-color: #0066cc;
-      color: white;
-      border: none;
-      font-weight: 600;
-      cursor: pointer;
-      margin-top: 10px;
-      padding: 10px 18px;
-      border-radius: 4px;
-    }
-    button:disabled {
-      background-color: #aaa;
-      cursor: not-allowed;
-    }
-    #status {
-      margin-top: 16px;
-      font-weight: 500;
-      color: #555;
-      white-space: pre-wrap;
-    }
-  </style>
-</head>
-<body>
-
-  <div class="card">
-    <h2>KMZ to NAD83 + USGS Elevation Converter</h2>
-    <p>Upload a Google Earth <code>.kmz</code> file to extract coordinates, fetch high-resolution USGS 3DEP elevations, transform WGS84 to NAD83, and export a text file.</p>
-
-    <!-- Step 1: KMZ Upload -->
-    <div class="form-group">
-      <label for="kmzFile">1. Select KMZ File:</label>
-      <input type="file" id="kmzFile" accept=".kmz,.kml">
-    </div>
-
-    <!-- Step 2: Target Datum Selection -->
-    <div class="form-group">
-      <label for="targetProjection">2. Select Target Projection:</label>
-      <select id="targetProjection">
-        <option value="EPSG:4269">NAD83 Geographic (Lat/Lon Degrees + Elev Feet)</option>
-        <option value="EPSG:3417">NAD83 / Iowa South (ftUS)</option>
-        <option value="EPSG:3418">NAD83 / Iowa North (ftUS)</option>
-        <option value="EPSG:3435">NAD83 / Illinois East (ftUS)</option>
-        <option value="EPSG:2227">NAD83 / California zone 3 (ftUS)</option>
-        <option value="EPSG:2263">NAD83 / New York Long Island (ftUS)</option>
-        <option value="EPSG:2277">NAD83 / Texas Central (ftUS)</option>
-      </select>
-    </div>
-
-    <button id="processBtn" onclick="processFile()">Convert & Download Text File</button>
-
-    <div id="status"></div>
-  </div>
-
-  <script>
-    // Define EPSG projection strings in proj4
-    proj4.defs("EPSG:4326", "+proj=longlat +datum=WGS84 +no_defs");
-    proj4.defs("EPSG:4269", "+proj=longlat +datum=NAD83 +no_defs");
-    proj4.defs("EPSG:3417", "+proj=lcc +lat_1=41.78333333333333 +lat_2=40.61666666666667 +lat_0=40 +lon_0=-93.5 +x_0=500000.0000000001 +y_0=0 +datum=NAD83 +units=us-ft +no_defs");
-    proj4.defs("EPSG:3418", "+proj=lcc +lat_1=43.26666666666667 +lat_2=42.06666666666667 +lat_0=41.5 +lon_0=-93.5 +x_0=500000.0000000001 +y_0=1000000 +datum=NAD83 +units=us-ft +no_defs");
-    proj4.defs("EPSG:3435", "+proj=tmerc +lat_0=36.66666666666666 +lon_0=-88.33333333333333 +k=0.9999941176470588 +x_0=300000 +y_0=0 +datum=NAD83 +units=us-ft +no_defs");
-    proj4.defs("EPSG:2227", "+proj=lcc +lat_1=38.43333333333333 +lat_2=37.06666666666667 +lat_0=36.5 +lon_0=-120.5 +x_0=2000000.0001016 +y_0=500000.0001016001 +datum=NAD83 +units=us-ft +no_defs");
-    proj4.defs("EPSG:2263", "+proj=lcc +lat_1=41.03333333333333 +lat_2=40.66666666666666 +lat_0=40.16666666666666 +lon_0=-74 +x_0=300000 +y_0=0 +datum=NAD83 +units=us-ft +no_defs");
-    proj4.defs("EPSG:2277", "+proj=lcc +lat_1=31.88333333333333 +lat_2=30.11666666666667 +lat_0=29.66666666666667 +lon_0=-100.3333333333333 +x_0=700000.0000000001 +y_0=3000000 +datum=NAD83 +units=us-ft +no_defs");
-
-    // Fetch high-resolution USGS 3DEP elevation (feet) in fast parallel chunks
-    async function fetchUSGSElevationsBatch(rawPoints, updateStatus) {
-      const results = new Array(rawPoints.length).fill(0);
-      const chunkSize = 10; // 10 parallel connections at a time for high speed
-
-      for (let i = 0; i < rawPoints.length; i += chunkSize) {
-        const chunk = rawPoints.slice(i, i + chunkSize);
-        
-        updateStatus(Math.min(i + chunkSize, rawPoints.length), rawPoints.length);
-
-        const promises = chunk.map(async (pt, index) => {
-          const globalIdx = i + index;
-          try {
-            // USGS 3DEP Point Query Service URL
-            const url = `https://epqs.nationalmap.gov/v1/json?x=${pt.lon}&y=${pt.lat}&wkid=4326&units=Feet&output=json`;
-            const res = await fetch(url);
-            const data = await res.json();
-            
-            if (data && data.value !== undefined && data.value !== null) {
-              const elevFeet = parseFloat(data.value);
-              if (!isNaN(elevFeet) && elevFeet > -9000) {
-                results[globalIdx] = elevFeet;
-              }
-            }
-          } catch (err) {
-            console.warn(`USGS fetch failed for point ${globalIdx + 1}`, err);
-          }
-        });
-
-        await Promise.all(promises);
-      }
-
-      return results;
-    }
-
-    async function processFile() {
-      const fileInput = document.getElementById('kmzFile');
-      const status = document.getElementById('status');
-      const processBtn = document.getElementById('processBtn');
-      const targetEpsg = document.getElementById('targetProjection').value;
-
-      if (!fileInput.files.length) {
-        alert("Please select a .kmz or .kml file first.");
-        return;
-      }
-
-      const file = fileInput.files[0];
-      processBtn.disabled = true;
-      status.innerText = "Step 1: Unpacking file...";
-
-      try {
-        let kmlText = "";
-
-        if (file.name.endsWith('.kmz')) {
-          const zip = await JSZip.loadAsync(file);
-          const kmlFile = Object.keys(zip.files).find(f => f.endsWith('.kml'));
-          if (!kmlFile) throw new Error("No KML file found inside the KMZ archive.");
-          kmlText = await zip.files[kmlFile].async("text");
-        } else {
-          kmlText = await file.text();
-        }
-
-        status.innerText = "Step 2: Parsing coordinates from KML...";
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(kmlText, "text/xml");
-        const coordElements = xmlDoc.getElementsByTagName("coordinates");
-
-        let rawPoints = [];
-        for (let el of coordElements) {
-          const text = el.textContent.trim();
-          const tuples = text.split(/\s+/);
-          for (let tuple of tuples) {
-            const parts = tuple.split(',');
-            if (parts.length >= 2) {
-              const lon = parseFloat(parts[0]);
-              const lat = parseFloat(parts[1]);
-              if (!isNaN(lon) && !isNaN(lat)) {
-                rawPoints.push({ lon, lat });
-              }
-            }
-          }
-        }
-
-        if (rawPoints.length === 0) {
-          throw new Error("No valid coordinates found in the file.");
-        }
-
-        // Step 3: Fast Parallel USGS Fetching
-        const elevationsFeet = await fetchUSGSElevationsBatch(rawPoints, (current, total) => {
-          status.innerText = `Step 3: Fetching high-res USGS 3DEP elevations (${current}/${total} points)...`;
-        });
-
-        status.innerText = "Step 4: Transforming coordinates to NAD83...";
-        
-        let outputLines = [];
-        const isStatePlane = targetEpsg !== "EPSG:4269";
-
-        if (isStatePlane) {
-          outputLines.push("Point_ID,WGS84_Lat,WGS84_Lon,NAD83_Easting_ft,NAD83_Northing_ft,Elevation_ft");
-        } else {
-          outputLines.push("Point_ID,WGS84_Lat,WGS84_Lon,NAD83_Lat_deg,NAD83_Lon_deg,Elevation_ft");
-        }
-
-        rawPoints.forEach((pt, idx) => {
-          const transformed = proj4("EPSG:4326", targetEpsg, [pt.lon, pt.lat]);
-          const elevFeet = elevationsFeet[idx] ? elevationsFeet[idx].toFixed(2) : "0.00";
-
-          if (isStatePlane) {
-            outputLines.push(`${idx + 1},${pt.lat.toFixed(6)},${pt.lon.toFixed(6)},${transformed[0].toFixed(2)},${transformed[1].toFixed(2)},${elevFeet}`);
-          } else {
-            outputLines.push(`${idx + 1},${pt.lat.toFixed(6)},${pt.lon.toFixed(6)},${transformed[1].toFixed(6)},${transformed[0].toFixed(6)},${elevFeet}`);
-          }
-        });
-
-        status.innerText = "Step 5: Exporting text file...";
-        const blob = new Blob([outputLines.join("\n")], { type: "text/plain;charset=utf-8" });
-        const downloadUrl = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = downloadUrl;
-        a.download = "nad83_coordinates_elevation.txt";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-
-        status.innerText = `Success! Processed ${rawPoints.length} point(s) and downloaded "nad83_coordinates_elevation.txt".`;
 
       } catch (err) {
         console.error(err);
