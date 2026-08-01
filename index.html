@@ -68,7 +68,7 @@
 
   <div class="card">
     <h2>KMZ to NAD83 Exporter</h2>
-    <p>Upload your <code>.kmz</code> file to generate a <code>point number,lat,lon,elevation</code> export.</p>
+    <p>Upload your <code>.kmz</code> file to generate a comma-delimited <code>.txt</code> export (<code>point,lat,lon,elevation</code>).</p>
 
     <div class="form-group">
       <label for="kmzFile">1. Select KMZ File:</label>
@@ -92,7 +92,7 @@
       </select>
     </div>
 
-    <button id="processBtn" onclick="processFile()">Convert & Download CSV</button>
+    <button id="processBtn" onclick="processFile()">Convert & Download TXT</button>
 
     <div id="status"></div>
   </div>
@@ -201,7 +201,7 @@
           elevationsFeet = rawPoints.map(p => p.altFt);
         }
 
-        status.innerText = "Formatting output...";
+        status.innerText = "Formatting comma-delimited output...";
 
         let outputLines = [];
 
@@ -213,19 +213,21 @@
           const lonVal = targetEpsg === "EPSG:4269" ? transformed[0].toFixed(9) : transformed[0].toFixed(2);
           const elevVal = elevationsFeet[idx] ? elevationsFeet[idx].toFixed(1) : "0.0";
 
+          // Comma-delimited line construction
           outputLines.push(`${pointNum},${latVal},${lonVal},${elevVal}`);
         });
 
-        const blob = new Blob([outputLines.join("\n")], { type: "text/csv;charset=utf-8" });
+        // Generate .txt MIME type blob
+        const blob = new Blob([outputLines.join("\n")], { type: "text/plain;charset=utf-8" });
         const downloadUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = downloadUrl;
-        a.download = "nad83_points.csv";
+        a.download = "nad83_points.txt";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
 
-        status.innerText = `Done! Exported ${rawPoints.length} points to nad83_points.csv`;
+        status.innerText = `Done! Exported ${rawPoints.length} points to nad83_points.txt`;
 
       } catch (err) {
         console.error(err);
