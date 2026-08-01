@@ -71,7 +71,7 @@
 
   <div class="card">
     <h2>KMZ to NAD83 + USGS Elevation Converter</h2>
-    <p>Upload a Google Earth <code>.kmz</code> file to extract coordinates, fetch high-resolution USGS 3DEP elevations, transform WGS84 to NAD83, and export a text file.</p>
+    <p>Upload a Google Earth <code>.kmz</code> file to extract coordinates, fetch high-resolution USGS 3DEP elevations, transform WGS84 to NAD83, and export a comma-delimited text file.</p>
 
     <!-- Step 1: KMZ Upload -->
     <div class="form-group">
@@ -206,20 +206,14 @@
         let outputLines = [];
         const isStatePlane = targetEpsg !== "EPSG:4269";
 
-        if (isStatePlane) {
-          outputLines.push("Point_ID,WGS84_Lat,WGS84_Lon,NAD83_Easting_ft,NAD83_Northing_ft,Elevation_ft");
-        } else {
-          outputLines.push("Point_ID,WGS84_Lat,WGS84_Lon,NAD83_Lat_deg,NAD83_Lon_deg,Elevation_ft");
-        }
-
         rawPoints.forEach((pt, idx) => {
           const transformed = proj4("EPSG:4326", targetEpsg, [pt.lon, pt.lat]);
           const elevFeet = elevationsFeet[idx] ? elevationsFeet[idx].toFixed(2) : "0.00";
 
           if (isStatePlane) {
-            outputLines.push(`${idx + 1},${pt.lat.toFixed(6)},${pt.lon.toFixed(6)},${transformed[0].toFixed(2)},${transformed[1].toFixed(2)},${elevFeet}`);
+            outputLines.push(`${idx + 1},${transformed[1].toFixed(2)},${transformed[0].toFixed(2)},${elevFeet}`);
           } else {
-            outputLines.push(`${idx + 1},${pt.lat.toFixed(6)},${pt.lon.toFixed(6)},${transformed[1].toFixed(6)},${transformed[0].toFixed(6)},${elevFeet}`);
+            outputLines.push(`${idx + 1},${transformed[1].toFixed(9)},${transformed[0].toFixed(9)},${elevFeet}`);
           }
         });
 
