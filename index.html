@@ -30,12 +30,13 @@
     .form-group {
       margin-bottom: 16px;
     }
-    label {
+    .form-group > label,
+    .step-label {
       display: block;
       font-weight: 600;
       margin-bottom: 6px;
     }
-    input[type="file"], select, button {
+    select, button {
       font-size: 14px;
       padding: 8px 12px;
       border-radius: 4px;
@@ -59,12 +60,130 @@
       background-color: #aaa;
       cursor: not-allowed;
     }
+    button.secondary {
+      background-color: #fff;
+      color: #b42318;
+      border: 1px solid #f0b4ae;
+      margin-top: 12px;
+      padding: 6px 14px;
+    }
+
+    /* ---------- Drag & drop zone ---------- */
+    #kmzFile {
+      display: none;
+    }
+    .drop-zone {
+      display: block;
+      border: 2px dashed #9bb7d4;
+      border-radius: 8px;
+      padding: 28px 16px;
+      text-align: center;
+      background: #f4f8fc;
+      cursor: pointer;
+      transition: background-color 0.15s, border-color 0.15s;
+    }
+    .drop-zone * {
+      pointer-events: none; /* keeps dragleave from flickering over child elements */
+    }
+    .drop-zone:hover,
+    .drop-zone:focus {
+      background: #eaf2fb;
+      border-color: #0066cc;
+      outline: none;
+    }
+    .drop-zone.dragover {
+      background: #dcebfa;
+      border-color: #0066cc;
+      border-style: solid;
+    }
+    .drop-zone.has-file {
+      border-color: #2e7d32;
+      background: #f1f8f2;
+    }
+    .drop-zone .icon {
+      font-size: 32px;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .drop-zone .main-text {
+      font-weight: 600;
+    }
+    .drop-zone .sub-text {
+      font-size: 13px;
+      color: #666;
+    }
+    .drop-zone .browse {
+      color: #0066cc;
+      text-decoration: underline;
+    }
+    #fileName {
+      margin-top: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #2e7d32;
+      word-break: break-all;
+    }
+
+    /* ---------- Working indicator ---------- */
+    #working {
+      display: none;
+      margin-top: 20px;
+      padding: 16px;
+      border: 1px solid #cfe0f2;
+      border-radius: 8px;
+      background: #f4f8fc;
+    }
+    #working.active {
+      display: block;
+    }
+    .working-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .spinner {
+      flex: 0 0 auto;
+      width: 36px;
+      height: 36px;
+      border: 4px solid #cfe0f2;
+      border-top-color: #0066cc;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    #workingText {
+      font-weight: 600;
+      color: #234;
+    }
+    #workingDetail {
+      font-size: 13px;
+      color: #555;
+    }
+    .progress {
+      margin-top: 12px;
+      height: 10px;
+      background: #dde7f1;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0066cc, #3d8fe0);
+      transition: width 0.25s ease;
+    }
+
     #status {
       margin-top: 16px;
       font-weight: 500;
       color: #555;
       white-space: pre-wrap;
     }
+    #status.success { color: #2e7d32; }
+    #status.warning { color: #a15c00; }
+    #status.error   { color: #b42318; }
   </style>
 </head>
 <body>
@@ -73,10 +192,16 @@
     <h2>KML to NAD83 + USGS Elevation Converter</h2>
     <p>Upload a Google Earth .kml or .kmz file to extract coordinates, fetch USGS 3DEP elevations, transform to NAD83, and export a text file for Civil 3D.</p>
 
-    <!-- Step 1: File Upload -->
+    <!-- Step 1: File Upload (drag & drop or click to browse) -->
     <div class="form-group">
-      <label for="kmzFile">1. Select KML or KMZ File:</label>
+      <span class="step-label">1. Select KML or KMZ File:</span>
+      <label for="kmzFile" id="dropZone" class="drop-zone" tabindex="0">
+        <div class="icon">📂</div>
+        <div class="main-text">Drag &amp; drop your .kml or .kmz file here</div>
+        <div class="sub-text">or <span class="browse">click to browse</span></div>
+      </label>
       <input type="file" id="kmzFile" accept=".kmz,.kml">
+      <div id="fileName"></div>
     </div>
 
     <!-- Step 2: Projection Selection -->
@@ -104,6 +229,19 @@
 
     <button id="processBtn" onclick="processFile()">Convert & Download Text File</button>
 
+    <!-- Working indicator -->
+    <div id="working" aria-live="polite">
+      <div class="working-row">
+        <div class="spinner" aria-hidden="true"></div>
+        <div>
+          <div id="workingText">Working...</div>
+          <div id="workingDetail">Please keep this page open.</div>
+        </div>
+      </div>
+      <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+      <button class="secondary" id="cancelBtn" onclick="requestCancel()">Cancel</button>
+    </div>
+
     <div id="status"></div>
   </div>
 
@@ -120,53 +258,208 @@
     proj4.defs("EPSG:2263", "+proj=lcc +lat_1=41.03333333333333 +lat_2=40.66666666666666 +lat_0=40.16666666666666 +lon_0=-74 +x_0=984250 +y_0=0 +datum=NAD83 +units=us-ft +no_defs");
     proj4.defs("EPSG:2277", "+proj=lcc +lat_1=31.88333333333333 +lat_2=30.11666666666667 +lat_0=29.66666666666667 +lon_0=-100.3333333333333 +x_0=2296583.333333333 +y_0=9842500 +datum=NAD83 +units=us-ft +no_defs");
 
-    async function fetchUSGSElevationsBatch(rawPoints, updateStatus) {
-      const results = new Array(rawPoints.length).fill(0);
-      const chunkSize = 10;
+    /* =========================================================
+       File selection: drag & drop + click to browse
+       ========================================================= */
+    let selectedFile = null;
+    let cancelRequested = false;
 
-      for (let i = 0; i < rawPoints.length; i += chunkSize) {
-        const chunk = rawPoints.slice(i, i + chunkSize);
-        updateStatus(Math.min(i + chunkSize, rawPoints.length), rawPoints.length);
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('kmzFile');
 
-        const promises = chunk.map(async (pt, index) => {
-          const globalIdx = i + index;
-          try {
-            const url = `https://epqs.nationalmap.gov/v1/json?x=${pt.lon}&y=${pt.lat}&wkid=4326&units=Feet&output=json`;
-            const res = await fetch(url);
-            const data = await res.json();
-            
-            if (data && data.value !== undefined && data.value !== null) {
-              const elevFeet = parseFloat(data.value);
-              if (!isNaN(elevFeet) && elevFeet > -9000) {
-                results[globalIdx] = elevFeet;
-              }
-            }
-          } catch (err) {
-            console.warn(`USGS fetch failed for point ${globalIdx + 1}`, err);
-          }
-        });
-
-        await Promise.all(promises);
+    function setFile(file) {
+      if (!file) return;
+      const name = file.name.toLowerCase();
+      if (!name.endsWith('.kml') && !name.endsWith('.kmz')) {
+        alert("That file isn't a .kml or .kmz file. Please choose a Google Earth file.");
+        return;
       }
-
-      return results;
+      selectedFile = file;
+      document.getElementById('fileName').textContent = `✔ Selected: ${file.name}`;
+      dropZone.classList.add('has-file');
+      setStatus("", "");
     }
 
-    async function processFile() {
-      const fileInput = document.getElementById('kmzFile');
+    fileInput.addEventListener('change', () => setFile(fileInput.files[0]));
+
+    ['dragenter', 'dragover'].forEach(evt =>
+      dropZone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+      })
+    );
+    ['dragleave', 'drop'].forEach(evt =>
+      dropZone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+      })
+    );
+    dropZone.addEventListener('drop', e => {
+      if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+    });
+
+    // Keyboard support: Enter or Space opens the file browser
+    dropZone.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
+
+    // Stop the browser from opening the file if it's dropped outside the zone
+    window.addEventListener('dragover', e => e.preventDefault());
+    window.addEventListener('drop', e => e.preventDefault());
+
+    /* =========================================================
+       UI helpers
+       ========================================================= */
+    function setStatus(text, kind) {
       const status = document.getElementById('status');
+      status.innerText = text;
+      status.className = kind || "";
+    }
+
+    function showWorking(on) {
+      document.getElementById('working').classList.toggle('active', on);
+      if (!on) setProgress(0);
+    }
+
+    function setWorking(text, detail) {
+      document.getElementById('workingText').innerText = text;
+      if (detail !== undefined) document.getElementById('workingDetail').innerText = detail;
+    }
+
+    function setProgress(fraction) {
+      document.getElementById('progressBar').style.width = `${Math.round(fraction * 100)}%`;
+    }
+
+    function requestCancel() {
+      cancelRequested = true;
+      setWorking("Cancelling...", "Finishing current requests.");
+    }
+
+    // Lets the browser repaint (so the spinner/progress updates show)
+    const nextFrame = () => new Promise(r => setTimeout(r, 0));
+
+    // Wait that can be interrupted by Cancel
+    async function cancellableWait(ms, onTick) {
+      const end = Date.now() + ms;
+      while (Date.now() < end) {
+        if (cancelRequested) return;
+        if (onTick) onTick(Math.ceil((end - Date.now()) / 1000));
+        await new Promise(r => setTimeout(r, 250));
+      }
+    }
+
+    /* =========================================================
+       USGS elevation lookup with retry-until-done
+       ========================================================= */
+    const NO_DATA_MAX_TRIES = 5; // USGS answered but had no elevation (e.g., point outside coverage)
+
+    async function fetchElevationOnce(pt, timeoutMs) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const url = `https://epqs.nationalmap.gov/v1/json?x=${pt.lon}&y=${pt.lat}&wkid=4326&units=Feet&output=json`;
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const v = parseFloat(data && data.value);
+        if (isNaN(v)) throw new Error("Empty response");
+        if (v <= -9000) return { noData: true };   // USGS "no data" flag (e.g. -1000000)
+        return { value: v };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function fetchUSGSElevations(rawPoints) {
+      const total = rawPoints.length;
+      const elevations = new Array(total).fill(null);
+      const noDataTries = new Array(total).fill(0);
+      const gaveUp = new Set();
+
+      let pending = rawPoints.map((_, i) => i);
+      let pass = 0;
+
+      const doneCount = () => elevations.filter(v => v !== null).length + gaveUp.size;
+
+      while (pending.length > 0) {
+        if (cancelRequested) throw new Error("Cancelled by user.");
+        pass++;
+
+        // First pass is fast; retry passes are gentler with longer timeouts
+        const concurrency = pass === 1 ? 10 : 4;
+        const timeoutMs = Math.min(10000 + (pass - 1) * 5000, 30000);
+        const failed = [];
+
+        for (let i = 0; i < pending.length; i += concurrency) {
+          if (cancelRequested) throw new Error("Cancelled by user.");
+          const chunk = pending.slice(i, i + concurrency);
+
+          await Promise.all(chunk.map(async idx => {
+            try {
+              const r = await fetchElevationOnce(rawPoints[idx], timeoutMs);
+              if (r.noData) {
+                noDataTries[idx]++;
+                if (noDataTries[idx] >= NO_DATA_MAX_TRIES) gaveUp.add(idx);
+                else failed.push(idx);
+              } else {
+                elevations[idx] = r.value;
+              }
+            } catch (err) {
+              // Timeout or network error: always try again on the next pass
+              console.warn(`USGS fetch failed for point ${idx + 1} (pass ${pass}):`, err.message);
+              failed.push(idx);
+            }
+          }));
+
+          const done = doneCount();
+          setProgress(done / total);
+          setWorking(
+            `Fetching USGS 3DEP elevations: ${done} of ${total} points`,
+            pass === 1
+              ? "Looking up each point's elevation..."
+              : `Retry pass ${pass - 1}: re-trying ${pending.length} point(s) that timed out.`
+          );
+        }
+
+        pending = failed;
+
+        if (pending.length > 0) {
+          const waitMs = Math.min(2000 * pass, 15000);
+          await cancellableWait(waitMs, secs => {
+            setWorking(
+              `Fetching USGS 3DEP elevations: ${doneCount()} of ${total} points`,
+              `${pending.length} point(s) timed out. Retrying in ${secs}s... (this is normal, keep the page open)`
+            );
+          });
+        }
+      }
+
+      return { elevations, noDataPoints: [...gaveUp].sort((a, b) => a - b) };
+    }
+
+    /* =========================================================
+       Main process
+       ========================================================= */
+    async function processFile() {
       const processBtn = document.getElementById('processBtn');
       const targetEpsg = document.getElementById('targetProjection').value;
       const format = document.getElementById('exportFormat').value;
 
-      if (!fileInput.files.length) {
-        alert("Please select a .kmz or .kml file first.");
+      if (!selectedFile) {
+        alert("Please select or drag in a .kmz or .kml file first.");
         return;
       }
 
-      const file = fileInput.files[0];
+      const file = selectedFile;
+      cancelRequested = false;
       processBtn.disabled = true;
-      status.innerText = "Step 1: Unpacking file...";
+      setStatus("", "");
+      showWorking(true);
+      setWorking("Step 1: Unpacking file...", "Please keep this page open.");
+      await nextFrame();
 
       try {
         let kmlText = "";
@@ -180,7 +473,8 @@
           kmlText = await file.text();
         }
 
-        status.innerText = "Step 2: Parsing coordinates from KML...";
+        setWorking("Step 2: Parsing coordinates from KML...");
+        await nextFrame();
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(kmlText, "text/xml");
         const coordElements = xmlDoc.getElementsByTagName("coordinates");
@@ -205,19 +499,20 @@
           throw new Error("No valid coordinates found in the file.");
         }
 
-        const elevationsFeet = await fetchUSGSElevationsBatch(rawPoints, (current, total) => {
-          status.innerText = `Step 3: Fetching high-res USGS 3DEP elevations (${current}/${total} points)...`;
-        });
+        // Step 3: elevations (retries until every point has one)
+        const { elevations, noDataPoints } = await fetchUSGSElevations(rawPoints);
 
-        status.innerText = "Step 4: Transforming coordinates to NAD83...";
-        
+        setWorking("Step 4: Transforming coordinates to NAD83...", `${rawPoints.length} points`);
+        setProgress(1);
+        await nextFrame();
+
         let outputLines = [];
         const isStatePlane = targetEpsg !== "EPSG:4269";
+        const precision = isStatePlane ? 2 : 9;
 
         rawPoints.forEach((pt, idx) => {
           const transformed = proj4("EPSG:4326", targetEpsg, [pt.lon, pt.lat]);
-          const elevFeet = elevationsFeet[idx] ? elevationsFeet[idx].toFixed(2) : "0.00";
-          const precision = isStatePlane ? 2 : 9;
+          const elevFeet = elevations[idx] !== null ? elevations[idx].toFixed(2) : "0.00";
 
           const x = transformed[0].toFixed(precision); // Easting or Lon
           const y = transformed[1].toFixed(precision); // Northing or Lat
@@ -229,23 +524,44 @@
           }
         });
 
-        status.innerText = "Step 5: Exporting text file...";
+        setWorking("Step 5: Exporting text file...");
+        await nextFrame();
+
+        // Output name = uploaded file name + "NAD83.txt"  (e.g. SiteSurvey.kmz -> SiteSurveyNAD83.txt)
+        const baseName = file.name.replace(/\.(kmz|kml)$/i, '').replace(/[\\/:*?"<>|]/g, '_');
+        const outName = `${baseName}NAD83.txt`;
+
         const blob = new Blob([outputLines.join("\n")], { type: "text/plain;charset=utf-8" });
         const downloadUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = downloadUrl;
-        a.download = "nad83_coordinates_elevation.txt";
+        a.download = outName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
 
-        status.innerText = `Success! Processed ${rawPoints.length} point(s) and downloaded "nad83_coordinates_elevation.txt".`;
+        showWorking(false);
+
+        if (noDataPoints.length > 0) {
+          const list = noDataPoints.map(i => i + 1).join(", ");
+          setStatus(
+            `Done. Processed ${rawPoints.length} point(s) and downloaded "${outName}".\n\n` +
+            `⚠ USGS has no elevation data for point(s): ${list}\n` +
+            `These were written with elevation 0.00. They may be outside USGS coverage (e.g. outside the US or over open water).`,
+            "warning"
+          );
+        } else {
+          setStatus(`Success! Processed ${rawPoints.length} point(s), all with elevations, and downloaded "${outName}".`, "success");
+        }
 
       } catch (err) {
         console.error(err);
-        status.innerText = `Error: ${err.message}`;
+        showWorking(false);
+        setStatus(`Error: ${err.message}`, "error");
       } finally {
         processBtn.disabled = false;
+        cancelRequested = false;
       }
     }
   </script>
